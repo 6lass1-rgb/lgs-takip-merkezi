@@ -7,90 +7,83 @@ import os
 # Uygulama Ayarları
 st.set_page_config(page_title="LGS Profesyonel Koçluk", layout="wide")
 
-# Veritabanı Dosyası (CSV)
+# Veritabanı Dosyası
 DB_FILE = "lgs_veritabani.csv"
 
-# Veri Yükleme Fonksiyonu
 def veri_yukle():
     if os.path.exists(DB_FILE):
         return pd.read_csv(DB_FILE)
     else:
         return pd.DataFrame(columns=["Tarih", "Ogrenci", "Deneme", "Ders", "Konu", "Doğru", "Yanlış", "Net"])
 
-# 1. ÖĞRENCİ LİSTESİ VE YÖNETİMİ
+# ÖĞRENCİ LİSTESİ (Session State ile yönetilir)
 if 'ogrenci_listesi' not in st.session_state:
     st.session_state['ogrenci_listesi'] = [
         "NBA8", "ÇNY8", "ÇBA8", "ÇAA8", "30BB8", "NZEY8", 
         "ÇYSD7", "ÇERE7", "NEBŞ6", "NEB6", "ÇYK5", "ÇEEÇ5"
     ]
 
+# --- YAN PANEL ---
 with st.sidebar:
     st.title("👥 Koçluk Paneli")
     secilen_ogrenci = st.selectbox("Öğrenci Seçiniz", st.session_state['ogrenci_listesi'])
-    
     st.divider()
-    st.subheader("➕ Yeni Öğrenci Tanımla")
-    yeni_isim = st.text_input("Öğrenci Kodu/Adı")
-    if st.button("Sisteme Ekle"):
+    yeni_isim = st.text_input("Yeni Öğrenci Ekle")
+    if st.button("Listeye Ekle"):
         if yeni_isim and yeni_isim not in st.session_state['ogrenci_listesi']:
             st.session_state['ogrenci_listesi'].append(yeni_isim)
-            st.success(f"{yeni_isim} eklendi!")
             st.rerun()
 
 # --- ANA EKRAN ---
-st.title(f"📊 {secilen_ogrenci} - Başarı Analiz Üssü")
+st.title(f"📊 {secilen_ogrenci} - Takip Paneli")
+tab1, tab2, tab3 = st.tabs(["📝 Veri Girişi", "📈 Gelişim", "🖼️ Hata Kumbarası"])
 
-tab1, tab2, tab3 = st.tabs(["📝 Veri Girişi", "📈 Gelişim İzleme", "🖼️ Soru Kumbarası"])
-
-# --- TAB 1: ÖĞRENCİ VERİ GİRİŞİ ---
 with tab1:
-    with st.form("veri_giris_formu"):
-        col1, col2 = st.columns(2)
-        with col1:
-            deneme = st.text_input("Deneme Adı / Yayın", placeholder="Örn: Bilfen-1")
-            ders = st.selectbox("Ders", ["Matematik", "Fen Bilimleri", "Türkçe", "Sosyal", "Din", "İngilizce"])
-            konu = st.text_input("Hatalı Konu")
-        with col2:
-            d = st.number_input("Doğru", 0, 20, 15)
-            y = st.number_input("Yanlış", 0, 20, 0)
-            tarih = st.date_input("Deneme Tarihi", datetime.now())
-        
-        kaydet = st.form_submit_button("Analiz Et ve Veritabanına Yaz")
-        
-        if kaydet:
+    with st.form("giris"):
+        c1, c2 = st.columns(2)
+        deneme = c1.text_input("Deneme Adı")
+        ders = c1.selectbox("Ders", ["Matematik", "Fen", "Türkçe", "Sosyal", "Din", "İngilizce"])
+        d = c2.number_input("Doğru", 0, 20, 15)
+        y = c2.number_input("Yanlış", 0, 20, 0)
+        tarih = st.date_input("Tarih", datetime.now())
+        if st.form_submit_button("Kaydet"):
             net = d - (y * 0.33)
             df = veri_yukle()
-            yeni_veri = pd.DataFrame([[tarih, secilen_ogrenci, deneme, ders, konu, d, y, net]], columns=df.columns)
-            df = pd.concat([df, yeni_veri], ignore_index=True)
-            df.to_csv(DB_FILE, index=False)
-            st.balloons()
-            st.success(f"Tebrikler {secilen_ogrenci}! Verilerin başarıyla arşive eklendi.")
+            yeni = pd.DataFrame([[tarih, secilen_ogrenci, deneme, ders, "Konu", d, y, net]], columns=df.columns)
+            pd.concat([df, yeni]).to_csv(DB_FILE, index=False)
+            st.success("Kaydedildi!")
 
-# --- TAB 2: KOÇ ANALİZ EKRANI ---
 with tab2:
     df = veri_yukle()
-    # Filtreleme
-    ogrenci_df = df[df["Ogrenci"] == secilen_ogrenci]
-    
-    if not ogrenci_df.empty:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Genel Net Ortalaması", f"{ogrenci_df['Net'].mean():.2f}")
-        c2.metric("Son Deneme Neti", f"{ogrenci_df['Net'].iloc[-1]:.2f}")
-        c3.metric("Toplam Girilen Kayıt", len(ogrenci_df))
+    o_df = df[df["Ogrenci"] == secilen_ogrenci]
+    if not o_df.empty:
+        st.line_chart(o_df.set_index("Tarih")["Net"])
+        st.dataframe(o_df)
+    else: st.info("Veri yok.")
 
-        st.divider()
-        st.subheader("📈 Net Değişim Grafiği")
-        st.line_chart(ogrenci_df.set_index("Tarih")["Net"])
-
-        st.subheader("📋 Son Kayıtlar")
-        st.dataframe(ogrenci_df.tail(5), use_container_width=True)
-    else:
-        st.info("Bu öğrenci için henüz veri girişi yapılmamış. İlk veriyi 'Veri Girişi' sekmesinden ekleyebilirsiniz.")
-
-# --- TAB 3: SORU KUMBARASI ---
-with tab3:
-    st.subheader("📸 Kritik Soru Arşivi")
-    st.write("Öğrencinin yapamadığı veya senin 'mutlaka tekrar etmelisin' dediğin soruları buraya ekleyin.")
-    uploaded_file = st.file_uploader("Soru Fotoğrafı (Kamerayı açmak için dokunun)", type=['jpg', 'png', 'jpeg'])
-    if uploaded_file:
-        st.image(uploaded_file, caption=f"{secilen_ogrenci} - Hatalı Soru Notu", use_container_width=True)
+# --- ⚙️ YÖNETİCİ PANELİ (SİLME İŞLEMLERİ) ---
+st.divider()
+with st.expander("⚙️ Yönetici Ayarları (Silme İşlemleri)"):
+    sifre = st.text_input("Yönetici Şifresi", type="password")
+    if sifre == "koc123": # <--- Şifren bu!
+        st.subheader("🗑️ Veri/Öğrenci Yönetimi")
+        
+        # Öğrenci Silme
+        sil_isim = st.selectbox("Listeden Silinecek Öğrenci", st.session_state['ogrenci_listesi'])
+        if st.button(f"{sil_isim} İsimli Öğrenciyi Listeden Kaldır"):
+            st.session_state['ogrenci_listesi'].remove(sil_isim)
+            st.error("Öğrenci silindi.")
+            st.rerun()
+            
+        # Son Veriyi Silme
+        df = veri_yukle()
+        if not df.empty:
+            st.divider()
+            st.write("Son Girilen Kayıtlar (Yanlışsa Silin):")
+            st.dataframe(df.tail(5))
+            if st.button("En Son Girilen Kaydı Sil"):
+                df[:-1].to_csv(DB_FILE, index=False)
+                st.warning("Son kayıt silindi.")
+                st.rerun()
+    elif sifre != "":
+        st.error("Hatalı şifre!")
